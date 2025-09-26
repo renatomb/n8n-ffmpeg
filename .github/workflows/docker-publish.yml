@@ -2,28 +2,29 @@ name: Publish Docker image
 
 on:
   push:
-    branches: [ "main" ]        # publica :latest a cada push na main
-    tags:     [ "v*" ]          # publica :stable e :<versão> quando criar tag vX.Y.Z
+    branches: [ "main" ]
+  schedule:
+    - cron: "0 7 * * 1"   # rebuild semanal (seg 07:00 UTC)
+  workflow_dispatch:
+  # Evento de TAG separado (vX.Y.Z) — publica só :X.Y.Z
+  push:
+    tags:
+      - "v*"
 
 jobs:
-  build-and-push:
+  # MAIN + SCHEDULE: latest e stable
+  build-and-push-rolling:
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
+    strategy:
+      matrix:
+        base: [ latest, stable ]
     env:
-      IMAGE_NAME: ${{ secrets.DOCKERHUB_REPO != '' && secrets.DOCKERHUB_REPO || format('{0}/{1}', secrets.DOCKERHUB_USERNAME, github.event.repository.name) }}
-
+      IMAGE_NAME: renatomb/n8n-ffmpeg
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -31,40 +32,51 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Gera tags inteligentes:
-      # - push na main -> :latest
-      # - tag v1.72.0 -> :v1.72.0 e :stable (você pode remover o :stable se preferir taggar manualmente)
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            # latest na branch default
-            type=raw,value=latest,enable={{is_default_branch}}
-            # tag semver vX.Y.Z vira :vX.Y.Z
-            type=ref,event=tag
-          labels: |
-            org.opencontainers.image.source=${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
-
-      # Se for tag (vX.Y.Z), também adiciona :stable
-      - name: Compute extra tags
-        id: extra
+      # publica :latest e :stable conforme a base
+      - name: Compute rolling tags
+        id: rolltags
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            echo "extratags=${{ env.IMAGE_NAME }}:stable" >> $GITHUB_OUTPUT
-          else
-            echo "extratags=" >> $GITHUB_OUTPUT
-          fi
+          BASE="${{ matrix.base }}"
+          echo "tags=${{ env.IMAGE_NAME }}:${BASE}" >> $GITHUB_OUTPUT
 
-      - name: Build and push (multi-arch)
+      - name: Build and push (${{ matrix.base }})
         uses: docker/build-push-action@v6
         with:
+          build-args: |
+            BASE_TAG=${{ matrix.base }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ steps.meta.outputs.tags }}
-            ${{ steps.extra.outputs.extratags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.rolltags.outputs.tags }}
+
+  # TAGS vX.Y.Z: só :X.Y.Z (sem stable)
+  build-and-push-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: renatomb/n8n-ffmpeg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract semver (X.Y.Z)
+        id: ver
+        run: |
+          RAW="${GITHUB_REF_NAME}"         # v1.72.0
+          SEMVER="${RAW#v}"                # 1.72.0
+          echo "semver=${SEMVER}" >> $GITHUB_OUTPUT
+
+      - name: Build and push :${{ steps.ver.outputs.semver }} (base n8n:stable)
+        uses: docker/build-push-action@v6
+        with:
+          build-args: |
+            BASE_TAG=stable
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.ver.outputs.semver }}

@@ -1,4 +1,5 @@
-FROM n8nio/n8n:latest
+ARG BASE_TAG=latest
+FROM n8nio/n8n:${BASE_TAG}
 LABEL org.opencontainers.image.title="n8n-ffmpeg" \
       org.opencontainers.image.description="n8n (Alpine) with FFmpeg" \
       org.opencontainers.image.url="https://hub.docker.com/r/renatomb/n8n-ffmpeg" \
