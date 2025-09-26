@@ -1,0 +1,70 @@
+name: Publish Docker image
+
+on:
+  push:
+    branches: [ "main" ]        # publica :latest a cada push na main
+    tags:     [ "v*" ]          # publica :stable e :<versão> quando criar tag vX.Y.Z
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE_NAME: ${{ secrets.DOCKERHUB_REPO != '' && secrets.DOCKERHUB_REPO || format('{0}/{1}', secrets.DOCKERHUB_USERNAME, github.event.repository.name) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Gera tags inteligentes:
+      # - push na main -> :latest
+      # - tag v1.72.0 -> :v1.72.0 e :stable (você pode remover o :stable se preferir taggar manualmente)
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            # latest na branch default
+            type=raw,value=latest,enable={{is_default_branch}}
+            # tag semver vX.Y.Z vira :vX.Y.Z
+            type=ref,event=tag
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+
+      # Se for tag (vX.Y.Z), também adiciona :stable
+      - name: Compute extra tags
+        id: extra
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "extratags=${{ env.IMAGE_NAME }}:stable" >> $GITHUB_OUTPUT
+          else
+            echo "extratags=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.extra.outputs.extratags }}
+          labels: ${{ steps.meta.outputs.labels }}
