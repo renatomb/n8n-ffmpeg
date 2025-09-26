@@ -1,5 +1,10 @@
 # n8n-ffmpeg
 
+![Docker Pulls](https://img.shields.io/docker/pulls/renatomb/n8n-ffmpeg?logo=docker)
+![Docker Image Size](https://img.shields.io/docker/image-size/renatomb/n8n-ffmpeg/latest?logo=docker)
+![Build](https://github.com/renatomb/n8n-ffmpeg/actions/workflows/docker-publish.yml/badge.svg)
+![GitHub Repo stars](https://img.shields.io/github/stars/renatomb/n8n-ffmpeg?logo=github)
+
 Docker image baseada na [imagem oficial do n8n](https://hub.docker.com/r/n8nio/n8n), com suporte adicional ao **FFmpeg**.  
 Ideal para fluxos de automação no n8n que envolvem manipulação de áudio e vídeo.
 
