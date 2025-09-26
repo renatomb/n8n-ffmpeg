@@ -2,14 +2,13 @@ name: Publish Docker image
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ]   # publica latest/stable ao dar push na main
+    tags: [ "v*" ]         # publica :X.Y.Z ao criar tag vX.Y.Z
   schedule:
     - cron: "0 7 * * 1"   # rebuild semanal (seg 07:00 UTC)
   workflow_dispatch:
   # Evento de TAG separado (vX.Y.Z) — publica só :X.Y.Z
-  push:
-    tags:
-      - "v*"
+
 
 jobs:
   # MAIN + SCHEDULE: latest e stable
