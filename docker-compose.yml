@@ -5,6 +5,8 @@ services:
       - "5678:5678"
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./data:/data # Added volume for data storage
+    restart: unless-stopped
     environment:
       - N8N_HOST=localhost
       - N8N_PORT=5678
